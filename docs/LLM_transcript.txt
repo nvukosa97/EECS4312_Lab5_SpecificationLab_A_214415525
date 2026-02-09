@@ -1842,3 +1842,298 @@ Working hours are enforced.
 No code changes needed — just the test expectations. ✅
 
 If you want, I can write a clean corrected test for overlapping events + lunch + buffer so it passes consistently. It’ll make your test suite bulletproof. Do you want me to do that?
+
+
+Lab6 GPT convo
+
+
+You said:
+Have this code ## Student Name: Noah Vukosa
+## Student ID: 214415525
+
+"""
+Stub file for the meeting slot suggestion exercise.
+
+Implement the function suggest_slots to return a list of valid meeting start times
+on a given day, taking into account working hours, and possible specific constraints. See the lab handout
+for full requirements.
+"""
+from typing import List, Dict
+
+def suggest_slots(events: List[Dict[str, str]], meeting_duration: int, day: str) -> List[str]:
+
+    def to_minutes(t: str) -> int:
+        h, m = map(int, t.split(":"))
+        return h * 60 + m
+
+    def to_time_str(m: int) -> str:
+        return f"{m // 60:02d}:{m % 60:02d}"
+
+    WORK_START = to_minutes("09:00")
+    WORK_END = to_minutes("17:00")
+    LUNCH_START = to_minutes("12:00")
+    LUNCH_END = to_minutes("13:00")
+    BUFFER = 15
+    SLOT_STEP = 15
+
+    # Convert events to minutes and sort
+    busy = [(to_minutes(e["start"]), to_minutes(e["end"])) for e in events]
+    busy.sort()
+
+    # Merge overlapping events
+    merged = []
+    for s, e in busy:
+        if not merged or s > merged[-1][1]:
+            merged.append([s, e])
+        else:
+            merged[-1][1] = max(merged[-1][1], e)
+
+    # Build free intervals (without buffer here)
+    free = []
+    current = WORK_START
+    for s, e in merged:
+        if s > current:
+            free.append((current, s))
+        current = max(current, e)  # buffer handled when checking slots
+    if current < WORK_END:
+        free.append((current, WORK_END))
+
+    slots = []
+    for start, end in free:
+        t = ((start + SLOT_STEP - 1) // SLOT_STEP) * SLOT_STEP  # align to 15-min
+        while t + meeting_duration <= end:
+            # Check if this slot overlaps **any event including buffer**
+            conflict = False
+            for s, e in merged:
+                if t < e + BUFFER and t + meeting_duration > s:
+                    conflict = True
+                    break
+            # Check lunch
+            if t < LUNCH_START and t + meeting_duration > LUNCH_START:
+                conflict = True
+            if t >= LUNCH_START and t < LUNCH_END:
+                conflict = True
+            if not conflict:
+                slots.append(to_time_str(t))
+            t += SLOT_STEP
+
+    return slots and test cases: ## Student Name:
+## Student ID: 
+
+"""
+Public test suite for the meeting slot suggestion exercise.
+
+Students can run these tests locally to check basic correctness of their implementation.
+The hidden test suite used for grading contains additional edge cases and will not be
+available to students.
+"""
+import pytest
+import sys
+import os 
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+from solution import suggest_slots
+
+
+def test_single_event_blocks_overlapping_slots():
+    """
+    Functional requirement:
+    Slots overlapping an event must not be suggested.
+    """
+    events = [{"start": "10:00", "end": "11:00"}]
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-01")
+
+    assert "10:00" not in slots
+    assert "10:30" not in slots
+    assert "11:15" in slots
+
+def test_event_outside_working_hours_is_ignored():
+    """
+    Constraint:
+    Events completely outside working hours should not affect availability.
+    """
+    events = [{"start": "07:00", "end": "08:00"}]
+    slots = suggest_slots(events, meeting_duration=60, day="2026-02-01")
+
+    assert "09:00" in slots
+    assert "16:00" in slots
+
+def test_unsorted_events_are_handled():
+    """
+    Constraint:
+    Event order should not affect correctness.
+    """
+    events = [
+        {"start": "13:00", "end": "14:00"},
+        {"start": "09:30", "end": "10:00"},
+        {"start": "11:00", "end": "12:00"},
+    ]
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-01")
+
+    assert  slots[1] == "10:15"
+    assert "09:30" not in slots
+
+def test_lunch_break_blocks_all_slots_during_lunch():
+    """
+    Constraint:
+    No meeting may start during the lunch break (12:00–13:00).
+    """
+    events = []
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-01")
+
+    assert "12:00" not in slots
+    assert "12:15" not in slots
+    assert "12:30" not in slots
+    assert "12:45" not in slots
+
+"""TODO: Add at least 5 additional test cases to test your implementation."""
+
+def test_event_ending_near_workday_end_blocks_late_slots():
+    """
+    Constraint:
+    Meetings must fully fit within working hours.
+    """
+    events = [{"start": "16:00", "end": "16:30"}]
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-01")
+
+    assert "16:30" not in slots
+    assert "16:15" not in slots
+    assert "15:30" in slots
+
+
+def test_buffer_is_applied_after_event():
+    """
+    Constraint:
+    A 15-minute buffer must be applied after an event.
+    """
+    events = [{"start": "09:00", "end": "10:00"}]
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-01")
+
+    assert "10:00" not in slots
+    assert "10:15" in slots
+
+
+def test_overlapping_events_are_merged_correctly():
+    """
+    Constraint:
+    Overlapping events should be treated as one continuous busy block.
+    """
+    events = [
+        {"start": "10:00", "end": "11:00"},
+        {"start": "10:30", "end": "11:30"},
+    ]
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-01")
+    print(slots)
+    assert "11:00" not in slots
+    assert "11:15" not in slots
+    assert "12:00" not in slots
+    assert "13:00" in slots
+
+
+def test_meeting_exactly_fits_before_lunch():
+    """
+    Edge case:
+    Meeting ending exactly at lunch start is allowed.
+    """
+    events = []
+    slots = suggest_slots(events, meeting_duration=60, day="2026-02-01")
+
+    assert "11:00" in slots
+    assert "11:15" not in slots  # would overlap lunch
+
+
+def test_no_slots_when_meeting_duration_too_long():
+    """
+    Constraint:
+    No slots should be returned if meeting duration exceeds any free interval.
+    """
+    events = []
+    slots = suggest_slots(events, meeting_duration=480, day="2026-02-01")
+
+    assert slots == []
+need to update solution to meet following requirement. Suggested meetings on Fridays must not start at or after 15:00
+
+ChatGPT said:
+Here’s an updated suggest_slots that enforces the new rule:
+
+New requirement: If day is a Friday, suggested meeting start times must be strictly before 15:00 (so 15:00, 15:15, … are not allowed).
+
+from typing import List, Dict
+from datetime import datetime
+
+def suggest_slots(events: List[Dict[str, str]], meeting_duration: int, day: str) -> List[str]:
+
+    def to_minutes(t: str) -> int:
+        h, m = map(int, t.split(":"))
+        return h * 60 + m
+
+    def to_time_str(m: int) -> str:
+        return f"{m // 60:02d}:{m % 60:02d}"
+
+    WORK_START = to_minutes("09:00")
+    WORK_END = to_minutes("17:00")
+    LUNCH_START = to_minutes("12:00")
+    LUNCH_END = to_minutes("13:00")
+    BUFFER = 15
+    SLOT_STEP = 15
+
+    # Friday rule: no meeting may START at or after 15:00
+    is_friday = datetime.strptime(day, "%Y-%m-%d").weekday() == 4  # Mon=0 ... Fri=4
+    FRIDAY_CUTOFF = to_minutes("15:00")
+
+    # Convert events to minutes and sort
+    busy = [(to_minutes(e["start"]), to_minutes(e["end"])) for e in events]
+    busy.sort()
+
+    # Merge overlapping events
+    merged = []
+    for s, e in busy:
+        if not merged or s > merged[-1][1]:
+            merged.append([s, e])
+        else:
+            merged[-1][1] = max(merged[-1][1], e)
+
+    # Build free intervals (without buffer here)
+    free = []
+    current = WORK_START
+    for s, e in merged:
+        if s > current:
+            free.append((current, s))
+        current = max(current, e)  # buffer handled when checking slots
+    if current < WORK_END:
+        free.append((current, WORK_END))
+
+    slots = []
+    for start, end in free:
+        t = ((start + SLOT_STEP - 1) // SLOT_STEP) * SLOT_STEP  # align to 15-min
+        while t + meeting_duration <= end:
+            # Enforce Friday cutoff on start time
+            if is_friday and t >= FRIDAY_CUTOFF:
+                break  # later times will also be >= cutoff in this interval
+
+            # Check if this slot overlaps any event including buffer
+            conflict = False
+            for s, e in merged:
+                if t < e + BUFFER and t + meeting_duration > s:
+                    conflict = True
+                    break
+
+            # Check lunch
+            if t < LUNCH_START and t + meeting_duration > LUNCH_START:
+                conflict = True
+            if t >= LUNCH_START and t < LUNCH_END:
+                conflict = True
+
+            if not conflict:
+                slots.append(to_time_str(t))
+            t += SLOT_STEP
+
+    return slots
+If you want a quick test to add:
+
+def test_friday_cutoff_blocks_15_and_later():
+    events = []
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-06")  # 2026-02-06 is Friday
+    assert "14:45" in slots
+    assert "15:00" not in slots
+    assert "15:15" not in slots

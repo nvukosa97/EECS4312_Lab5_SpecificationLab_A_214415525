@@ -9,6 +9,7 @@ on a given day, taking into account working hours, and possible specific constra
 for full requirements.
 """
 from typing import List, Dict
+from datetime import datetime
 
 def suggest_slots(events: List[Dict[str, str]], meeting_duration: int, day: str) -> List[str]:
 
@@ -25,6 +26,10 @@ def suggest_slots(events: List[Dict[str, str]], meeting_duration: int, day: str)
     LUNCH_END = to_minutes("13:00")
     BUFFER = 15
     SLOT_STEP = 15
+
+    # Friday rule: no meeting may START at or after 15:00
+    is_friday = datetime.strptime(day, "%Y-%m-%d").weekday() == 4  # Mon=0 ... Fri=4
+    FRIDAY_CUTOFF = to_minutes("15:00")
 
     # Convert events to minutes and sort
     busy = [(to_minutes(e["start"]), to_minutes(e["end"])) for e in events]
@@ -52,19 +57,26 @@ def suggest_slots(events: List[Dict[str, str]], meeting_duration: int, day: str)
     for start, end in free:
         t = ((start + SLOT_STEP - 1) // SLOT_STEP) * SLOT_STEP  # align to 15-min
         while t + meeting_duration <= end:
-            # Check if this slot overlaps **any event including buffer**
+            # Enforce Friday cutoff on start time
+            if is_friday and t >= FRIDAY_CUTOFF:
+                break  # later times will also be >= cutoff in this interval
+
+            # Check if this slot overlaps any event including buffer
             conflict = False
             for s, e in merged:
                 if t < e + BUFFER and t + meeting_duration > s:
                     conflict = True
                     break
+
             # Check lunch
             if t < LUNCH_START and t + meeting_duration > LUNCH_START:
                 conflict = True
             if t >= LUNCH_START and t < LUNCH_END:
                 conflict = True
+
             if not conflict:
                 slots.append(to_time_str(t))
             t += SLOT_STEP
 
     return slots
+

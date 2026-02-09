@@ -133,3 +133,10 @@ def test_no_slots_when_meeting_duration_too_long():
 
     assert slots == []
 
+
+def test_friday_cutoff_blocks_15_and_later():
+    events = []
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-06")  # 2026-02-06 is Friday
+    assert "14:45" in slots
+    assert "15:00" not in slots
+    assert "15:15" not in slots
